@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Repas de la semaine</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button id="btn-prev-week" class="nav-arrow" aria-label="Semaine précédente">‹</button>
+      <div class="topbar-title">
+        <h1 id="week-label">Semaine</h1>
+        <div id="week-sublabel" class="muted"></div>
+      </div>
+      <button id="btn-next-week" class="nav-arrow" aria-label="Semaine suivante">›</button>
+    </header>
+
+    <main id="views">
+      <section id="view-planning" class="view active">
+        <div id="planning-grid" class="grid"></div>
+        <div class="planning-actions">
+          <button id="btn-fill-week" class="btn-secondary">🎲 Remplir les cases vides</button>
+          <button id="btn-clear-week" class="btn-ghost">Vider la semaine</button>
+        </div>
+      </section>
+
+      <section id="view-library" class="view">
+        <div class="panel-header">
+          <h2>Bibliothèque de repas</h2>
+          <button id="btn-add-meal" class="btn-primary">+ Ajouter un repas</button>
+        </div>
+        <div class="field search-box">
+          <input type="text" id="f-meal-search" placeholder="Rechercher par nom, tag (protéine, féculent, légume) ou ingrédient..." />
+        </div>
+        <div id="meal-list" class="card-list"></div>
+      </section>
+
+      <section id="view-ingredients" class="view">
+        <div class="panel-header">
+          <h2>Ingrédients (pour la génération auto)</h2>
+          <button id="btn-add-ingredient" class="btn-primary">+ Ajouter un ingrédient</button>
+        </div>
+        <div id="ingredient-list" class="card-list"></div>
+      </section>
+
+      <section id="view-shopping" class="view">
+        <div class="panel-header">
+          <h2>Liste de courses — semaine affichée</h2>
+        </div>
+        <div id="shopping-list" class="card-list"></div>
+      </section>
+    </main>
+
+    <nav class="tabbar">
+      <button data-view="planning" class="tab active"><span class="tab-icon">📅</span><span>Planning</span></button>
+      <button data-view="library" class="tab"><span class="tab-icon">📚</span><span>Repas</span></button>
+      <button data-view="ingredients" class="tab"><span class="tab-icon">🥕</span><span>Ingrédients</span></button>
+      <button data-view="shopping" class="tab"><span class="tab-icon">🛒</span><span>Courses</span></button>
+    </nav>
+
+    <div id="modal-root"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
