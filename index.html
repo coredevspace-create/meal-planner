@@ -10,6 +10,13 @@
 </head>
 <body>
   <div id="app">
+    <div class="auth-bar" id="auth-bar" style="display:none;">
+      <button id="btn-google-signin" class="btn-secondary">🔐 Se connecter avec Google</button>
+      <div id="auth-user-info" class="auth-user-info" style="display:none;">
+        <span id="auth-user-name"></span>
+        <button id="btn-google-signout" class="btn-ghost">Déconnexion</button>
+      </div>
+    </div>
     <header class="topbar">
       <button id="btn-prev-week" class="nav-arrow" aria-label="Semaine précédente">‹</button>
       <div class="topbar-title">
@@ -24,6 +31,7 @@
         <div id="planning-grid" class="grid"></div>
         <div class="planning-actions">
           <button id="btn-fill-week" class="btn-secondary">🎲 Remplir les cases vides</button>
+          <button id="btn-repair-week" class="btn-secondary">🔧 Corriger les répétitions</button>
           <button id="btn-clear-week" class="btn-ghost">Vider la semaine</button>
         </div>
       </section>
@@ -32,6 +40,7 @@
         <div class="panel-header">
           <h2>Bibliothèque de repas</h2>
           <button id="btn-add-meal" class="btn-primary">+ Ajouter un repas</button>
+          <button id="btn-create-from-ingredients" class="btn-secondary">🥕 Créer depuis ingrédients</button>
         </div>
         <div class="field search-box">
           <input type="text" id="f-meal-search" placeholder="Rechercher par nom, tag (protéine, féculent, légume) ou ingrédient..." />
@@ -50,7 +59,9 @@
       <section id="view-shopping" class="view">
         <div class="panel-header">
           <h2>Liste de courses — semaine affichée</h2>
+          <button id="btn-export-shopping" class="btn-secondary">📥 Télécharger la liste</button>
         </div>
+        <div id="shopping-range-note" class="card-sub" style="margin-bottom:12px;"></div>
         <div id="shopping-list" class="card-list"></div>
       </section>
     </main>
@@ -65,6 +76,7 @@
     <div id="modal-root"></div>
   </div>
 
+  <script type="module" src="firebase-sync.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
