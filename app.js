@@ -519,6 +519,7 @@
   var authSignedOutHintEl = $('#auth-signed-out-hint');
   var signInBtn = $('#btn-google-signin');
   var signOutBtn = $('#btn-google-signout');
+  var authDebugEl = $('#auth-debug-info');
 
   /* ---------------------------------------------------------------------
    * Rendering: week label
@@ -1681,6 +1682,9 @@
     });
     window.MealPlannerSync.onRemoteChange(function (json) {
       applyRemoteState(json);
+    });
+    window.MealPlannerSync.onStatusChange(function (msg) {
+      authDebugEl.textContent = msg;
     });
   }
   if (window.MealPlannerSync) {

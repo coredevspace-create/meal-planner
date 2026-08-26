@@ -5,7 +5,7 @@
 // cote app.js.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult,
+  getAuth, GoogleAuthProvider, signInWithPopup,
   signOut as fbSignOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
@@ -29,6 +29,12 @@ const provider = new GoogleAuthProvider();
 let unsubscribeSnapshot = null;
 let authChangeCallback = null;
 let remoteChangeCallback = null;
+let statusCallback = null;
+
+function reportStatus(msg) {
+  console.log('[MealPlannerSync]', msg);
+  if (statusCallback) statusCallback(msg);
+}
 
 function docRefFor(uid) {
   return doc(db, 'users', uid);
@@ -44,28 +50,36 @@ function watchUserDoc(uid) {
       }
     }
   }, (err) => {
-    console.error('Erreur de synchronisation Firestore :', err);
+    reportStatus('Erreur de synchronisation : ' + err.message);
   });
 }
 
+reportStatus('Pont de connexion chargé, en attente de Firebase...');
+
 onAuthStateChanged(auth, (user) => {
   if (user) {
+    reportStatus('Connecté : ' + (user.email || user.uid));
     watchUserDoc(user.uid);
-  } else if (unsubscribeSnapshot) {
-    unsubscribeSnapshot();
-    unsubscribeSnapshot = null;
+  } else {
+    reportStatus('Non connecté.');
+    if (unsubscribeSnapshot) {
+      unsubscribeSnapshot();
+      unsubscribeSnapshot = null;
+    }
   }
   if (authChangeCallback) authChangeCallback(user);
 });
 
-getRedirectResult(auth).catch((err) => {
-  console.error('Connexion Google : ', err);
-  alert("La connexion Google a échoué : " + err.message);
-});
-
 window.MealPlannerSync = {
   signIn() {
-    return signInWithRedirect(auth, provider);
+    reportStatus('Ouverture de la fenêtre de connexion Google...');
+    return signInWithPopup(auth, provider).then((result) => {
+      reportStatus('Connexion réussie : ' + result.user.email);
+      return result;
+    }).catch((err) => {
+      reportStatus('Échec de connexion (' + err.code + ') : ' + err.message);
+      throw err;
+    });
   },
   signOut() {
     return fbSignOut(auth);
@@ -77,6 +91,9 @@ window.MealPlannerSync = {
   onRemoteChange(cb) {
     remoteChangeCallback = cb;
   },
+  onStatusChange(cb) {
+    statusCallback = cb;
+  },
   fetchOnce(uid) {
     return getDoc(docRefFor(uid)).then((snap) => (snap.exists() ? snap.data().json : null));
   },
@@ -84,7 +101,8 @@ window.MealPlannerSync = {
     const user = auth.currentUser;
     if (!user) return;
     setDoc(docRefFor(user.uid), { json: jsonString, updatedAt: Date.now() })
-      .catch((err) => console.error('Echec de synchronisation :', err));
+      .then(() => reportStatus('Données synchronisées.'))
+      .catch((err) => reportStatus('Échec de synchronisation : ' + err.message));
   }
 };
 
