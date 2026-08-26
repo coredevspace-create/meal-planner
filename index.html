@@ -10,13 +10,6 @@
 </head>
 <body>
   <div id="app">
-    <div class="auth-bar" id="auth-bar" style="display:none;">
-      <button id="btn-google-signin" class="btn-secondary">🔐 Se connecter avec Google</button>
-      <div id="auth-user-info" class="auth-user-info" style="display:none;">
-        <span id="auth-user-name"></span>
-        <button id="btn-google-signout" class="btn-ghost">Déconnexion</button>
-      </div>
-    </div>
     <header class="topbar">
       <button id="btn-prev-week" class="nav-arrow" aria-label="Semaine précédente">‹</button>
       <div class="topbar-title">
@@ -64,6 +57,24 @@
         <div id="shopping-range-note" class="card-sub" style="margin-bottom:12px;"></div>
         <div id="shopping-list" class="card-list"></div>
       </section>
+
+      <section id="view-settings" class="view">
+        <div class="panel-header">
+          <h2>Paramètres</h2>
+        </div>
+        <div class="card">
+          <div class="card-main">
+            <div class="card-title">Compte Google</div>
+            <div class="card-sub" id="settings-sync-unavailable">La synchronisation cloud n'est pas disponible sur ce navigateur (trop ancien). L'app continue de fonctionner normalement en local, sur cet appareil uniquement.</div>
+            <div class="card-sub" id="auth-user-info" style="display:none;">Connecté en tant que <strong id="auth-user-name"></strong> — tes données sont synchronisées automatiquement entre tous tes appareils.</div>
+            <div class="card-sub" id="auth-signed-out-hint" style="display:none;">Connecte-toi pour retrouver tes repas et ton planning sur tous tes appareils.</div>
+          </div>
+        </div>
+        <div class="planning-actions">
+          <button id="btn-google-signin" class="btn-primary" style="display:none;">🔐 Se connecter avec Google</button>
+          <button id="btn-google-signout" class="btn-ghost" style="display:none;">Se déconnecter</button>
+        </div>
+      </section>
     </main>
 
     <nav class="tabbar">
@@ -71,6 +82,7 @@
       <button data-view="library" class="tab"><span class="tab-icon">📚</span><span>Repas</span></button>
       <button data-view="ingredients" class="tab"><span class="tab-icon">🥕</span><span>Ingrédients</span></button>
       <button data-view="shopping" class="tab"><span class="tab-icon">🛒</span><span>Courses</span></button>
+      <button data-view="settings" class="tab"><span class="tab-icon">⚙️</span><span>Réglages</span></button>
     </nav>
 
     <div id="modal-root"></div>

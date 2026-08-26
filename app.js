@@ -513,9 +513,10 @@
   var shoppingListEl = $('#shopping-list');
   var shoppingRangeNoteEl = $('#shopping-range-note');
   var modalRoot = $('#modal-root');
-  var authBarEl = $('#auth-bar');
+  var syncUnavailableEl = $('#settings-sync-unavailable');
   var authUserInfoEl = $('#auth-user-info');
   var authUserNameEl = $('#auth-user-name');
+  var authSignedOutHintEl = $('#auth-signed-out-hint');
   var signInBtn = $('#btn-google-signin');
   var signOutBtn = $('#btn-google-signout');
 
@@ -1646,17 +1647,25 @@
   function updateAuthUI(user) {
     if (user) {
       signInBtn.style.display = 'none';
+      signOutBtn.style.display = '';
       authUserInfoEl.style.display = '';
+      authSignedOutHintEl.style.display = 'none';
       authUserNameEl.textContent = user.displayName || user.email || 'Connecté';
     } else {
       signInBtn.style.display = '';
+      signOutBtn.style.display = 'none';
       authUserInfoEl.style.display = 'none';
+      authSignedOutHintEl.style.display = '';
     }
   }
   function initCloudSync() {
     if (!window.MealPlannerSync) return;
-    authBarEl.style.display = '';
-    signInBtn.addEventListener('click', function () { window.MealPlannerSync.signIn(); });
+    syncUnavailableEl.style.display = 'none';
+    signInBtn.style.display = '';
+    authSignedOutHintEl.style.display = '';
+    signInBtn.addEventListener('click', function () {
+      window.MealPlannerSync.signIn().catch(function (err) { alert('Connexion Google impossible : ' + err.message); });
+    });
     signOutBtn.addEventListener('click', function () { window.MealPlannerSync.signOut(); });
     window.MealPlannerSync.onAuthChange(function (user) {
       updateAuthUI(user);
