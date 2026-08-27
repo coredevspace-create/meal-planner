@@ -90,7 +90,7 @@
    * State / persistence
    * ------------------------------------------------------------------- */
   function defaultState() {
-    return { meals: [], ingredients: [], plan: {}, shoppingChecked: {}, meta: { lastMaintainedDate: null } };
+    return { meals: [], ingredients: [], plan: {}, shoppingChecked: {}, meta: { lastMaintainedDate: null, theme: 'dark', design: 'classic', layout: 'rows' } };
   }
   function loadState() {
     try {
@@ -505,6 +505,7 @@
    * DOM refs
    * ------------------------------------------------------------------- */
   function $(sel) { return document.querySelector(sel); }
+  var topbarEl = $('.topbar');
   var weekLabelEl = $('#week-label');
   var weekSublabelEl = $('#week-sublabel');
   var gridEl = $('#planning-grid');
@@ -520,6 +521,14 @@
   var signInBtn = $('#btn-google-signin');
   var signOutBtn = $('#btn-google-signout');
   var authDebugEl = $('#auth-debug-info');
+  var themeDarkBtn = $('#btn-theme-dark');
+  var themeLightBtn = $('#btn-theme-light');
+  var designClassicBtn = $('#btn-design-classic');
+  var designRoundBtn = $('#btn-design-round');
+  var designCompactBtn = $('#btn-design-compact');
+  var layoutRowsBtn = $('#btn-layout-rows');
+  var layoutColumnsBtn = $('#btn-layout-columns');
+  var layoutListBtn = $('#btn-layout-list');
 
   /* ---------------------------------------------------------------------
    * Rendering: week label
@@ -613,11 +622,22 @@
     return levenshtein(word, token) <= typoTolerance(word.length);
   }
 
-  function renderPlanningGrid() {
-    var weekKey = fmtISO(viewingMonday);
-    var today = new Date();
-    gridEl.innerHTML = '';
+  // Construit une case repas (contenu identique quelle que soit la disposition).
+  // captionSlot : si fourni, affiche "Midi"/"Soir" en petit dans la case (utile
+  // pour les dispositions ou il n'y a pas de colonne d'en-tete).
+  function buildMealCell(weekKey, dayIndex, slot, isToday, extraClass, captionSlot) {
+    var key = slotKey(dayIndex, slot);
+    var mealId = state.plan[weekKey] ? state.plan[weekKey][key] : null;
+    var meal = mealId ? arrFind(state.meals, function (m) { return m.id === mealId; }) : null;
+    var cellClass = 'meal-slot ' + extraClass + (isToday ? ' today-slot' : '') + (!meal ? ' empty' : '') + (meal && meal.source === 'generated' ? ' auto-badge' : '');
+    var cellHtml = '';
+    if (captionSlot) cellHtml += '<div class="slot-caption">' + SLOT_LABELS[slot] + '</div>';
+    cellHtml += meal ? ('<div class="meal-name">' + escapeHtml(meal.name) + '</div><div class="meal-tags">' + tagIcons(meal) + '</div>') : '+ Ajouter';
+    return el('div', { class: cellClass, 'data-day': String(dayIndex), 'data-slot': slot }, cellHtml);
+  }
 
+  // Disposition "Lignes" (classique) : jours en lignes, Midi/Soir en colonnes.
+  function renderPlanningGridRows(weekKey, today) {
     var headerRow = document.createElement('div');
     headerRow.className = 'grid-row grid-row-header';
     headerRow.appendChild(el('div', { class: 'grid-header-cell grid-col-label' }, ''));
@@ -634,18 +654,59 @@
       var dayLabel = el('div', { class: 'day-label grid-col-label' + (isToday ? ' today' : '') },
         DAY_NAMES[dayIndex] + '<div class="day-date">' + fmtLong(dayDate) + '</div>');
       row.appendChild(dayLabel);
-
       for (var si2 = 0; si2 < MEAL_SLOTS.length; si2++) {
-        var slot = MEAL_SLOTS[si2];
-        var key = slotKey(dayIndex, slot);
-        var mealId = state.plan[weekKey] ? state.plan[weekKey][key] : null;
-        var meal = mealId ? arrFind(state.meals, function (m) { return m.id === mealId; }) : null;
-        var cellClass = 'meal-slot grid-col-slot' + (isToday ? ' today-slot' : '') + (!meal ? ' empty' : '') + (meal && meal.source === 'generated' ? ' auto-badge' : '');
-        var cellHtml = meal ? ('<div class="meal-name">' + escapeHtml(meal.name) + '</div><div class="meal-tags">' + tagIcons(meal) + '</div>') : '+ Ajouter';
-        var cell = el('div', { class: cellClass, 'data-day': String(dayIndex), 'data-slot': slot }, cellHtml);
-        row.appendChild(cell);
+        row.appendChild(buildMealCell(weekKey, dayIndex, MEAL_SLOTS[si2], isToday, 'grid-col-slot', null));
       }
       gridEl.appendChild(row);
+    }
+  }
+
+  // Disposition "Colonnes" : jours en haut de gauche a droite, repas en dessous.
+  function renderPlanningGridColumns(weekKey, today) {
+    var row = document.createElement('div');
+    row.className = 'grid-columns-row';
+    for (var dayIndex = 0; dayIndex < 7; dayIndex++) {
+      var dayDate = addDays(viewingMonday, dayIndex);
+      var isToday = isSameDay(dayDate, today);
+      var col = document.createElement('div');
+      col.className = 'grid-day-col';
+      var dayLabel = el('div', { class: 'day-label day-label-top' + (isToday ? ' today' : '') },
+        DAY_NAMES[dayIndex] + '<div class="day-date">' + fmtLong(dayDate) + '</div>');
+      col.appendChild(dayLabel);
+      for (var si = 0; si < MEAL_SLOTS.length; si++) {
+        col.appendChild(buildMealCell(weekKey, dayIndex, MEAL_SLOTS[si], isToday, 'grid-cell-col', MEAL_SLOTS[si]));
+      }
+      row.appendChild(col);
+    }
+    gridEl.appendChild(row);
+  }
+
+  // Disposition "Agenda" : liste verticale, un bloc par jour avec ses deux repas
+  // en pleine largeur (pratique en orientation portrait).
+  function renderPlanningGridList(weekKey, today) {
+    for (var dayIndex = 0; dayIndex < 7; dayIndex++) {
+      var dayDate = addDays(viewingMonday, dayIndex);
+      var isToday = isSameDay(dayDate, today);
+      var header = el('div', { class: 'list-day-header' + (isToday ? ' today' : '') },
+        DAY_NAMES[dayIndex] + ' <span class="day-date-inline">' + fmtLong(dayDate) + '</span>');
+      gridEl.appendChild(header);
+      for (var si = 0; si < MEAL_SLOTS.length; si++) {
+        gridEl.appendChild(buildMealCell(weekKey, dayIndex, MEAL_SLOTS[si], isToday, 'grid-cell-list', MEAL_SLOTS[si]));
+      }
+    }
+  }
+
+  function renderPlanningGrid() {
+    var weekKey = fmtISO(viewingMonday);
+    var today = new Date();
+    gridEl.innerHTML = '';
+    var layout = (state.meta && state.meta.layout) || 'rows';
+    if (layout === 'columns') {
+      renderPlanningGridColumns(weekKey, today);
+    } else if (layout === 'list') {
+      renderPlanningGridList(weekKey, today);
+    } else {
+      renderPlanningGridRows(weekKey, today);
     }
   }
 
@@ -1590,6 +1651,45 @@
   $('#btn-create-from-ingredients').addEventListener('click', function () { pendingSlotContext = null; openIngredientSelectModal(); });
   $('#btn-add-ingredient').addEventListener('click', function () { openIngredientModal({ mode: 'add' }); });
   $('#btn-export-shopping').addEventListener('click', function () { openShoppingExportModal(); });
+
+  /* ---------------------------------------------------------------------
+   * Theme (sombre / clair)
+   * ------------------------------------------------------------------- */
+  function applyTheme() {
+    var theme = (state.meta && state.meta.theme === 'light') ? 'light' : 'dark';
+    var design = (state.meta && state.meta.design) || 'classic';
+    if (design !== 'round' && design !== 'compact') design = 'classic';
+    var classes = [];
+    if (theme === 'light') classes.push('light');
+    if (design === 'round') classes.push('design-round');
+    if (design === 'compact') classes.push('design-compact');
+    document.body.className = classes.join(' ');
+    // met en evidence le bouton du theme et du design actifs
+    themeDarkBtn.className = theme === 'dark' ? 'btn-primary' : 'btn-secondary';
+    themeLightBtn.className = theme === 'light' ? 'btn-primary' : 'btn-secondary';
+    designClassicBtn.className = design === 'classic' ? 'btn-primary' : 'btn-secondary';
+    designRoundBtn.className = design === 'round' ? 'btn-primary' : 'btn-secondary';
+    designCompactBtn.className = design === 'compact' ? 'btn-primary' : 'btn-secondary';
+    var layout = (state.meta && state.meta.layout) || 'rows';
+    if (layout !== 'columns' && layout !== 'list') layout = 'rows';
+    layoutRowsBtn.className = layout === 'rows' ? 'btn-primary' : 'btn-secondary';
+    layoutColumnsBtn.className = layout === 'columns' ? 'btn-primary' : 'btn-secondary';
+    layoutListBtn.className = layout === 'list' ? 'btn-primary' : 'btn-secondary';
+  }
+  function setThemePref(key, value) {
+    state.meta[key] = value;
+    save();
+    applyTheme();
+    if (key === 'layout') renderPlanningGrid();
+  }
+  themeDarkBtn.addEventListener('click', function () { setThemePref('theme', 'dark'); });
+  themeLightBtn.addEventListener('click', function () { setThemePref('theme', 'light'); });
+  designClassicBtn.addEventListener('click', function () { setThemePref('design', 'classic'); });
+  designRoundBtn.addEventListener('click', function () { setThemePref('design', 'round'); });
+  designCompactBtn.addEventListener('click', function () { setThemePref('design', 'compact'); });
+  layoutRowsBtn.addEventListener('click', function () { setThemePref('layout', 'rows'); });
+  layoutColumnsBtn.addEventListener('click', function () { setThemePref('layout', 'columns'); });
+  layoutListBtn.addEventListener('click', function () { setThemePref('layout', 'list'); });
   $('#f-meal-search').addEventListener('input', function (e) { mealSearchQuery = e.target.value; renderMealList(); });
 
   /* ---------------------------------------------------------------------
@@ -1602,6 +1702,7 @@
     for (var x = 0; x < allTabs.length; x++) allTabs[x].classList.toggle('active', allTabs[x] === btn);
     var allViews = document.querySelectorAll('.view');
     for (var y = 0; y < allViews.length; y++) allViews[y].classList.toggle('active', allViews[y].id === 'view-' + view);
+    topbarEl.style.display = (view === 'planning' || view === 'shopping') ? '' : 'none';
     if (view === 'shopping') renderShoppingList();
     if (view === 'library') renderMealList();
     if (view === 'ingredients') renderIngredientList();
@@ -1644,6 +1745,7 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     receivingRemoteUpdate = false;
     renderAll();
+    applyTheme();
   }
   function updateAuthUI(user) {
     if (user) {
@@ -1700,6 +1802,7 @@
   state.meta.lastMaintainedDate = fmtISO(new Date());
   maintainHorizon();
   renderAll();
+  applyTheme();
 
   if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
     navigator.serviceWorker.register('sw.js').catch(function () {});
