@@ -162,6 +162,23 @@ main#views {
   letter-spacing: 0.05em;
 }
 
+/* Pastilles de remplacement des emoji de tags (mode "Texte") */
+.tag-mini {
+  display: inline-block;
+  min-width: 17px;
+  padding: 1px 4px;
+  margin-right: 3px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
+  color: #ffffff;
+}
+.tag-mini-protein { background: #c0504d; }
+.tag-mini-starch { background: #c9a24b; color: #0f1720; }
+.tag-mini-veg { background: #4b9e5f; }
+.icon-btn-text { width: auto; padding: 0 8px; font-size: 0.75rem; }
+
 /* Disposition "Colonnes" : jours en haut, repas empiles dessous */
 .grid-columns-row {
   display: -webkit-box;

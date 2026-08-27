@@ -90,7 +90,7 @@
    * State / persistence
    * ------------------------------------------------------------------- */
   function defaultState() {
-    return { meals: [], ingredients: [], plan: {}, shoppingChecked: {}, meta: { lastMaintainedDate: null, theme: 'dark', design: 'classic', layout: 'rows' } };
+    return { meals: [], ingredients: [], plan: {}, shoppingChecked: {}, meta: { lastMaintainedDate: null, theme: 'dark', design: 'classic', layout: 'rows', iconMode: 'auto' } };
   }
   function loadState() {
     try {
@@ -529,6 +529,9 @@
   var layoutRowsBtn = $('#btn-layout-rows');
   var layoutColumnsBtn = $('#btn-layout-columns');
   var layoutListBtn = $('#btn-layout-list');
+  var iconsAutoBtn = $('#btn-icons-auto');
+  var iconsEmojiBtn = $('#btn-icons-emoji');
+  var iconsTextBtn = $('#btn-icons-text');
 
   /* ---------------------------------------------------------------------
    * Rendering: week label
@@ -548,12 +551,55 @@
     }
   }
 
+  /* ---------------------------------------------------------------------
+   * Icones : les vieux Android (4.4) n'ont que les emoji d'avant 2013, donc
+   * 🥦 🥩 🧀 🧱... s'affichent en carre vide. On detecte le support et on
+   * bascule sur des libelles texte si besoin (reglable dans Parametres).
+   * ------------------------------------------------------------------- */
+  var recentEmojiSupported = null; // calcule une seule fois, a la demande
+  function detectRecentEmojiSupport() {
+    try {
+      var canvas = document.createElement('canvas');
+      if (!canvas.getContext) return false;
+      canvas.width = 24; canvas.height = 24;
+      var ctx = canvas.getContext('2d');
+      if (!ctx || !ctx.fillText) return false;
+      ctx.textBaseline = 'top';
+      ctx.font = '20px sans-serif';
+      ctx.fillStyle = '#000000';
+      ctx.fillText('🥦', 0, 0); // brocoli : emoji de 2016, absent sur Android 4.4
+      var data = ctx.getImageData(0, 0, 24, 24).data;
+      for (var i = 0; i < data.length; i += 4) {
+        if (data[i + 3] === 0) continue;
+        // un emoji reellement supporte est rendu en couleur ; un carre vide est monochrome
+        if (data[i] !== data[i + 1] || data[i + 1] !== data[i + 2]) return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+  function useTextIcons() {
+    var mode = (state.meta && state.meta.iconMode) || 'auto';
+    if (mode === 'text') return true;
+    if (mode === 'emoji') return false;
+    if (recentEmojiSupported === null) recentEmojiSupported = detectRecentEmojiSupport();
+    return !recentEmojiSupported;
+  }
+
   function tagIcons(meal) {
-    var out = '';
-    if (meal.tags.protein) out += '🥩';
-    if (meal.tags.starch) out += '🍝';
-    if (meal.tags.veg) out += '🥦';
-    return out;
+    if (useTextIcons()) {
+      var out = '';
+      if (meal.tags.protein) out += '<span class="tag-mini tag-mini-protein">P</span>';
+      if (meal.tags.starch) out += '<span class="tag-mini tag-mini-starch">F</span>';
+      if (meal.tags.veg) out += '<span class="tag-mini tag-mini-veg">L</span>';
+      return out;
+    }
+    var icons = '';
+    if (meal.tags.protein) icons += '🥩';
+    if (meal.tags.starch) icons += '🍝';
+    if (meal.tags.veg) icons += '🥦';
+    return icons;
   }
   function tagBadges(tags) {
     var out = '';
@@ -708,6 +754,7 @@
     } else {
       renderPlanningGridRows(weekKey, today);
     }
+    applyIconMode();
   }
 
   /* ---------------------------------------------------------------------
@@ -757,9 +804,9 @@
         '<div class="card-sub">' + ingredientsLine + '</div>');
       main.addEventListener('click', function () { openRecipeView(meal, null); });
       var actions = el('div', { class: 'card-actions' }, '');
-      var editBtn = el('button', { class: 'icon-btn' }, '✏️');
+      var editBtn = el('button', { class: 'icon-btn', 'data-icon': 'edit' }, '✏️');
       editBtn.addEventListener('click', function () { openMealModal({ mode: 'edit', meal: meal }); });
-      var delBtn = el('button', { class: 'icon-btn' }, '🗑');
+      var delBtn = el('button', { class: 'icon-btn', 'data-icon': 'delete' }, '🗑');
       delBtn.addEventListener('click', function () {
         if (confirm('Supprimer "' + meal.name + '" ?')) {
           removeMealEverywhere(meal.id);
@@ -793,9 +840,9 @@
         var card = el('div', { class: 'card' }, '');
         var main = el('div', { class: 'card-main' }, '<div class="card-title">' + escapeHtml(ing.name) + '</div>');
         var actions = el('div', { class: 'card-actions' }, '');
-        var editBtn = el('button', { class: 'icon-btn' }, '✏️');
+        var editBtn = el('button', { class: 'icon-btn', 'data-icon': 'edit' }, '✏️');
         editBtn.addEventListener('click', function () { openIngredientModal({ mode: 'edit', ingredient: ing }); });
-        var delBtn = el('button', { class: 'icon-btn' }, '🗑');
+        var delBtn = el('button', { class: 'icon-btn', 'data-icon': 'delete' }, '🗑');
         delBtn.addEventListener('click', function () {
           if (confirm('Supprimer "' + ing.name + '" ?')) {
             state.ingredients = state.ingredients.filter(function (i) { return i.id !== ing.id; });
@@ -921,12 +968,56 @@
     });
   }
 
+  // Emoji hors BMP (paires de substitution) + symboles emoji du BMP.
+  // La plage des fleches (U+2190-21FF) est volontairement exclue pour ne pas
+  // manger le « → » du libelle de semaine.
+  var EMOJI_RE = /(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[\u2600-\u27BF\u2B00-\u2BFF\u3030\u303D])[\uFE0E\uFE0F]?/g;
+  function stripEmojis(str) {
+    return str.replace(EMOJI_RE, '').replace(/\s{2,}/g, ' ').replace(/^\s+|\s+$/g, '');
+  }
+  // Le texte d'origine est memorise sur le noeud lui-meme, pour pouvoir revenir
+  // aux emoji si l'utilisateur rebascule le reglage.
+  function walkTextNodes(node, fn) {
+    if (node.nodeType === 3) { fn(node); return; }
+    if (node.nodeType !== 1) return;
+    if (node.getAttribute && node.getAttribute('data-icon')) return; // traite a part
+    for (var i = 0; i < node.childNodes.length; i++) walkTextNodes(node.childNodes[i], fn);
+  }
+  // Remplace les emoji par du texte lisible quand le navigateur ne sait pas les
+  // afficher. A rappeler apres chaque rendu, car le HTML d'origine revient.
+  function applyIconMode() {
+    var textMode = useTextIcons();
+    var ICON_LABELS = {
+      edit: { text: 'Modif.', emoji: '✏️', cls: 'icon-btn' },
+      'delete': { text: 'Suppr.', emoji: '🗑', cls: 'icon-btn' },
+      close: { text: 'X', emoji: '✕', cls: 'modal-close-x' }
+    };
+    var iconBtns = document.querySelectorAll('[data-icon]');
+    for (var b = 0; b < iconBtns.length; b++) {
+      var spec = ICON_LABELS[iconBtns[b].getAttribute('data-icon')];
+      if (!spec) continue;
+      var wanted = textMode ? spec.text : spec.emoji;
+      if (iconBtns[b].textContent !== wanted) iconBtns[b].textContent = wanted;
+      iconBtns[b].className = (textMode && spec.cls === 'icon-btn') ? 'icon-btn icon-btn-text' : spec.cls;
+    }
+    walkTextNodes(document.getElementById('app'), function (node) {
+      if (textMode) {
+        if (node.origText === undefined) node.origText = node.nodeValue;
+        var cleaned = stripEmojis(node.origText);
+        if (cleaned !== node.nodeValue) node.nodeValue = cleaned;
+      } else if (node.origText !== undefined && node.nodeValue !== node.origText) {
+        node.nodeValue = node.origText;
+      }
+    });
+  }
+
   function renderAll() {
     renderWeekLabel();
     renderPlanningGrid();
     renderMealList();
     renderIngredientList();
     renderShoppingList();
+    applyIconMode();
   }
 
   /* ---------------------------------------------------------------------
@@ -1058,7 +1149,7 @@
   function openModalWith(innerNode) {
     var backdrop = el('div', { class: 'modal-backdrop' }, '');
     var modal = el('div', { class: 'modal' }, '');
-    var closeX = el('button', { class: 'modal-close-x', 'aria-label': 'Fermer' }, '✕');
+    var closeX = el('button', { class: 'modal-close-x', 'aria-label': 'Fermer', 'data-icon': 'close' }, '✕');
     closeX.addEventListener('click', function () { pendingSlotContext = null; closeModal(); });
     var scrollWrap = el('div', { class: 'modal-scroll' }, '');
     scrollWrap.appendChild(innerNode);
@@ -1068,6 +1159,7 @@
     backdrop.addEventListener('click', function (e) { if (e.target === backdrop) { pendingSlotContext = null; closeModal(); } });
     modalRoot.innerHTML = '';
     modalRoot.appendChild(backdrop);
+    applyIconMode();
   }
 
   var pendingSlotContext = null; // {weekKey, key} : assigne aussi le resultat a cette case
@@ -1490,11 +1582,31 @@
     for (var i = 0; i < marked.length; i++) marked[i].classList.remove('drag-over');
   }
 
+  // Seuils volontairement genereux : sur un vieil ecran tactile, un simple appui
+  // bouge souvent de quelques pixels et dure facilement plus de 350 ms.
+  var MOVE_THRESHOLD = 14;
+  var LONG_PRESS_MS = 550;
+
+  function openSlot(dayIndex, slot) {
+    var weekKey = fmtISO(viewingMonday);
+    var key = slotKey(dayIndex, slot);
+    var mealId = state.plan[weekKey] ? state.plan[weekKey][key] : null;
+    var meal = mealId ? arrFind(state.meals, function (m) { return m.id === mealId; }) : null;
+    if (meal) {
+      openRecipeView(meal, { weekKey: weekKey, key: key, dayIndex: dayIndex, slot: slot });
+    } else {
+      openMealPicker(dayIndex, slot);
+    }
+  }
+  function openSlotFromEl(slotEl) {
+    openSlot(Number(slotEl.getAttribute('data-day')), slotEl.getAttribute('data-slot'));
+  }
+
   function gestureStart(clientX, clientY, targetNode) {
     var slotEl = closestSlot(targetNode);
     gestureState = {
       startX: clientX, startY: clientY, startTime: Date.now(),
-      slotEl: slotEl, dragMode: false, timer: null
+      slotEl: slotEl, dragMode: false, moved: false, timer: null
     };
     if (slotEl) {
       gestureState.timer = setTimeout(function () {
@@ -1511,15 +1623,16 @@
         ghostEl.style.left = (clientX - slotEl.offsetWidth / 2) + 'px';
         ghostEl.style.top = (clientY - 20) + 'px';
         document.body.appendChild(ghostEl);
-      }, 350);
+      }, LONG_PRESS_MS);
     }
   }
   function gestureMove(clientX, clientY) {
     if (!gestureState) return;
     var dx = clientX - gestureState.startX;
     var dy = clientY - gestureState.startY;
+    if (Math.abs(dx) > MOVE_THRESHOLD || Math.abs(dy) > MOVE_THRESHOLD) gestureState.moved = true;
     if (!gestureState.dragMode) {
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(gestureState.timer);
+      if (gestureState.moved) clearTimeout(gestureState.timer);
       return;
     }
     if (ghostEl) {
@@ -1539,34 +1652,37 @@
     if (gestureState.dragMode) {
       var under = document.elementFromPoint(clientX, clientY);
       var targetSlot = closestSlot(under);
-      if (targetSlot && targetSlot !== gestureState.slotEl) {
-        var srcKey = slotKey(gestureState.slotEl.getAttribute('data-day'), gestureState.slotEl.getAttribute('data-slot'));
+      var srcEl = gestureState.slotEl;
+      var didSwap = false;
+      if (targetSlot && targetSlot !== srcEl) {
+        var srcKey = slotKey(srcEl.getAttribute('data-day'), srcEl.getAttribute('data-slot'));
         var dstKey = slotKey(targetSlot.getAttribute('data-day'), targetSlot.getAttribute('data-slot'));
         swapSlots(weekKey, srcKey, dstKey);
         save();
         renderPlanningGrid();
         if (currentTab === 'shopping') renderShoppingList();
+        didSwap = true;
       }
-      if (gestureState.slotEl) gestureState.slotEl.classList.remove('dragging');
+      if (srcEl) srcEl.classList.remove('dragging');
       clearDragHighlight();
       clearGhost();
+      // Appui long relache sur place, sans deplacement : l'utilisateur voulait
+      // simplement ouvrir la case, pas deplacer le repas.
+      if (!didSwap && !gestureState.moved && srcEl) {
+        gestureState = null;
+        openSlotFromEl(srcEl);
+        return;
+      }
     } else {
       var dx = clientX - gestureState.startX;
       var dy = clientY - gestureState.startY;
-      var elapsed = Date.now() - gestureState.startTime;
       if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.2) {
         navigateWeek(dx > 0 ? -1 : 1);
-      } else if (gestureState.slotEl && Math.abs(dx) < 10 && Math.abs(dy) < 10 && elapsed < 500) {
-        var tapDay = Number(gestureState.slotEl.getAttribute('data-day'));
-        var tapSlot = gestureState.slotEl.getAttribute('data-slot');
-        var tapKey = slotKey(tapDay, tapSlot);
-        var tapMealId = state.plan[weekKey] ? state.plan[weekKey][tapKey] : null;
-        var tapMeal = tapMealId ? arrFind(state.meals, function (m) { return m.id === tapMealId; }) : null;
-        if (tapMeal) {
-          openRecipeView(tapMeal, { weekKey: weekKey, key: tapKey, dayIndex: tapDay, slot: tapSlot });
-        } else {
-          openMealPicker(tapDay, tapSlot);
-        }
+      } else if (gestureState.slotEl && !gestureState.moved) {
+        var tapEl = gestureState.slotEl;
+        gestureState = null;
+        openSlotFromEl(tapEl);
+        return;
       }
     }
     gestureState = null;
@@ -1675,10 +1791,19 @@
     layoutRowsBtn.className = layout === 'rows' ? 'btn-primary' : 'btn-secondary';
     layoutColumnsBtn.className = layout === 'columns' ? 'btn-primary' : 'btn-secondary';
     layoutListBtn.className = layout === 'list' ? 'btn-primary' : 'btn-secondary';
+    var iconMode = (state.meta && state.meta.iconMode) || 'auto';
+    if (iconMode !== 'emoji' && iconMode !== 'text') iconMode = 'auto';
+    iconsAutoBtn.className = iconMode === 'auto' ? 'btn-primary' : 'btn-secondary';
+    iconsEmojiBtn.className = iconMode === 'emoji' ? 'btn-primary' : 'btn-secondary';
+    iconsTextBtn.className = iconMode === 'text' ? 'btn-primary' : 'btn-secondary';
   }
   function setThemePref(key, value) {
     state.meta[key] = value;
     save();
+    if (key === 'iconMode') {
+      // le HTML d'origine (avec emoji) doit etre regenere avant de re-substituer
+      renderAll();
+    }
     applyTheme();
     if (key === 'layout') renderPlanningGrid();
   }
@@ -1690,6 +1815,9 @@
   layoutRowsBtn.addEventListener('click', function () { setThemePref('layout', 'rows'); });
   layoutColumnsBtn.addEventListener('click', function () { setThemePref('layout', 'columns'); });
   layoutListBtn.addEventListener('click', function () { setThemePref('layout', 'list'); });
+  iconsAutoBtn.addEventListener('click', function () { setThemePref('iconMode', 'auto'); });
+  iconsEmojiBtn.addEventListener('click', function () { setThemePref('iconMode', 'emoji'); });
+  iconsTextBtn.addEventListener('click', function () { setThemePref('iconMode', 'text'); });
   $('#f-meal-search').addEventListener('input', function (e) { mealSearchQuery = e.target.value; renderMealList(); });
 
   /* ---------------------------------------------------------------------
@@ -1798,6 +1926,19 @@
   /* ---------------------------------------------------------------------
    * Bootstrap
    * ------------------------------------------------------------------- */
+  // Les listes se redessinent independamment (changement d'onglet, edition...) :
+  // on rejoue la substitution d'icones apres chacune d'elles.
+  (function wrapRendersWithIconMode() {
+    var originals = {
+      renderMealList: renderMealList,
+      renderIngredientList: renderIngredientList,
+      renderShoppingList: renderShoppingList
+    };
+    renderMealList = function () { originals.renderMealList(); applyIconMode(); };
+    renderIngredientList = function () { originals.renderIngredientList(); applyIconMode(); };
+    renderShoppingList = function () { originals.renderShoppingList(); applyIconMode(); };
+  })();
+
   seedIfEmpty();
   state.meta.lastMaintainedDate = fmtISO(new Date());
   maintainHorizon();
