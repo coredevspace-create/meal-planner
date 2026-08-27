@@ -1156,7 +1156,15 @@
     modal.appendChild(closeX);
     modal.appendChild(scrollWrap);
     backdrop.appendChild(modal);
-    backdrop.addEventListener('click', function (e) { if (e.target === backdrop) { pendingSlotContext = null; closeModal(); } });
+    // Filet de securite : un clic sur le fond dans les tout premiers instants
+    // vient forcement de l'evenement fantome du geste qui a ouvert la fenetre.
+    var openedAt = Date.now();
+    backdrop.addEventListener('click', function (e) {
+      if (e.target !== backdrop) return;
+      if (Date.now() - openedAt < 600) return;
+      pendingSlotContext = null;
+      closeModal();
+    });
     modalRoot.innerHTML = '';
     modalRoot.appendChild(backdrop);
     applyIconMode();
@@ -1707,6 +1715,10 @@
   gridEl.addEventListener('touchend', function (e) {
     var t = e.changedTouches[0];
     if (t) gestureEnd(t.clientX, t.clientY);
+    // Empeche les evenements souris synthetiques emis ~300 ms plus tard par les
+    // vieux navigateurs Android : ils retombaient sur le fond de la fenetre qui
+    // venait de s'ouvrir et la refermaient aussitot.
+    if (e.cancelable) e.preventDefault();
   }, false);
   gridEl.addEventListener('touchcancel', function () { gestureCancel(); }, false);
 
