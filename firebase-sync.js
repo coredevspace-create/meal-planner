@@ -25,11 +25,16 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
+// Permet de creer des documents dans le Drive de l'utilisateur. "drive.file" est
+// le scope le plus restreint possible : l'app ne voit que les fichiers qu'elle a
+// elle-meme crees, jamais le reste du Drive.
+provider.addScope('https://www.googleapis.com/auth/drive.file');
 
 let unsubscribeSnapshot = null;
 let authChangeCallback = null;
 let remoteChangeCallback = null;
 let statusCallback = null;
+let driveToken = null;
 
 function reportStatus(msg) {
   console.log('[MealPlannerSync]', msg);
@@ -70,15 +75,67 @@ onAuthStateChanged(auth, (user) => {
   if (authChangeCallback) authChangeCallback(user);
 });
 
+function rememberDriveToken(result) {
+  const cred = GoogleAuthProvider.credentialFromResult(result);
+  if (cred && cred.accessToken) driveToken = cred.accessToken;
+  return result;
+}
+
 window.MealPlannerSync = {
   signIn() {
     reportStatus('Ouverture de la fenêtre de connexion Google...');
     return signInWithPopup(auth, provider).then((result) => {
+      rememberDriveToken(result);
       reportStatus('Connexion réussie : ' + result.user.email);
       return result;
     }).catch((err) => {
       reportStatus('Échec de connexion (' + err.code + ') : ' + err.message);
       throw err;
+    });
+  },
+  isSignedIn() {
+    return !!auth.currentUser;
+  },
+  // Le jeton Drive n'est valable que le temps de la session : s'il manque (page
+  // rechargee), on redemande une autorisation. Google ne remande pas le mot de
+  // passe si la session est deja ouverte, la fenetre ne fait que passer.
+  ensureDriveToken() {
+    if (driveToken) return Promise.resolve(driveToken);
+    return signInWithPopup(auth, provider).then((result) => {
+      rememberDriveToken(result);
+      if (!driveToken) throw new Error("Autorisation Google Drive refusée.");
+      return driveToken;
+    });
+  },
+  // Cree un vrai document Google : Drive convertit le contenu envoye (texte ou
+  // CSV) vers le format cible (Docs ou Sheets).
+  createDriveFile(name, content, sourceMime, targetMime) {
+    return this.ensureDriveToken().then((token) => {
+      const boundary = 'mealplanner' + Date.now();
+      const metadata = { name: name, mimeType: targetMime };
+      const body =
+        '--' + boundary + '\r\n' +
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+        JSON.stringify(metadata) + '\r\n' +
+        '--' + boundary + '\r\n' +
+        'Content-Type: ' + sourceMime + '\r\n\r\n' +
+        content + '\r\n' +
+        '--' + boundary + '--';
+      return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'multipart/related; boundary=' + boundary
+        },
+        body: body
+      }).then((res) => res.json().then((json) => {
+        if (!res.ok) {
+          const msg = (json && json.error && json.error.message) || ('Erreur ' + res.status);
+          if (res.status === 401 || res.status === 403) driveToken = null; // force une nouvelle autorisation
+          throw new Error(msg);
+        }
+        return json;
+      }));
     });
   },
   signOut() {

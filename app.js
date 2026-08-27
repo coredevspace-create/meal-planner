@@ -1073,6 +1073,32 @@
     return '﻿' + lines.join('\r\n');
   }
 
+  // Copie compatible vieux navigateurs : l'API moderne quand elle existe, sinon
+  // la vieille methode du textarea temporaire.
+  function copyTextToClipboard(text, done) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(legacyCopy(text)); });
+      return;
+    }
+    done(legacyCopy(text));
+  }
+  function legacyCopy(text) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function downloadFile(filename, content, mimeType) {
     var blob = new Blob([content], { type: mimeType });
     var url = URL.createObjectURL(blob);
@@ -1099,6 +1125,7 @@
     html += '<div class="field"><label>Au</label><input type="date" id="f-export-end" value="' + fmtISO(defaultEnd) + '" /></div>';
     html += '<div class="field"><label>Format</label>';
     html += '<div class="modal-actions-top" id="f-export-actions"></div></div>';
+    html += '<div class="card-sub" id="f-export-status" style="margin-bottom:8px;"></div>';
     html += '<div class="card-sub">Les articles déjà cochés ne sont pas inclus.</div>';
     wrap.innerHTML = html;
 
@@ -1114,30 +1141,79 @@
     }
     function baseFilename(ext, start) { return 'liste-de-courses-' + fmtISO(start) + '.' + ext; }
 
-    var docsBtn = el('button', { class: 'btn-secondary' }, '📄 Texte (Google Docs)');
-    docsBtn.addEventListener('click', function () {
+    var statusEl = wrap.querySelector('#f-export-status');
+    function setStatus(html) { statusEl.innerHTML = html; }
+    function listTitle(range) {
+      return 'Liste de courses ' + fmtLong(range.start) + ' - ' + fmtLong(range.end);
+    }
+
+    function createOnDrive(kind) {
+      var range = getRange();
+      if (!range) return;
+      var counts = aggregateShoppingListRange(range.start, range.end, true);
+      var isSheet = kind === 'sheet';
+      var content = isSheet
+        ? buildShoppingListCsv(counts, range.start, range.end)
+        : buildShoppingListText(counts, range.start, range.end);
+      setStatus('Création du document dans ton Google Drive...');
+      window.MealPlannerSync.createDriveFile(
+        listTitle(range),
+        content,
+        isSheet ? 'text/csv' : 'text/plain',
+        isSheet ? 'application/vnd.google-apps.spreadsheet' : 'application/vnd.google-apps.document'
+      ).then(function (file) {
+        setStatus('✅ Document créé dans ton Drive : <a href="' + file.webViewLink + '" target="_blank" rel="noopener">' + escapeHtml(file.name) + '</a>');
+      }).catch(function (err) {
+        setStatus('❌ Échec : ' + escapeHtml(err.message || String(err)));
+      });
+    }
+
+    var syncAvailable = !!window.MealPlannerSync;
+    var signedIn = syncAvailable && window.MealPlannerSync.isSignedIn();
+
+    if (signedIn) {
+      var gdocBtn = el('button', { class: 'btn-primary' }, '📄 Créer un Google Doc');
+      gdocBtn.addEventListener('click', function () { createOnDrive('doc'); });
+      var gsheetBtn = el('button', { class: 'btn-primary' }, '📊 Créer un Google Sheets');
+      gsheetBtn.addEventListener('click', function () { createOnDrive('sheet'); });
+      actions.appendChild(gdocBtn);
+      actions.appendChild(gsheetBtn);
+    } else {
+      setStatus(syncAvailable
+        ? 'Connecte-toi avec Google (page Réglages) pour créer directement un Google Doc ou un Google Sheets.'
+        : 'La création de documents Google n\'est pas disponible sur ce navigateur. Les téléchargements ci-dessous fonctionnent.');
+    }
+
+    var copyBtn = el('button', { class: 'btn-secondary' }, '📋 Copier le texte (Keep)');
+    copyBtn.addEventListener('click', function () {
+      var range = getRange();
+      if (!range) return;
+      var counts = aggregateShoppingListRange(range.start, range.end, true);
+      var text = buildShoppingListText(counts, range.start, range.end);
+      copyTextToClipboard(text, function (ok) {
+        setStatus(ok
+          ? '✅ Liste copiée. Ouvre Google Keep, crée une note et colle-la.'
+          : '❌ Copie impossible sur ce navigateur — utilise le téléchargement en texte.');
+      });
+    });
+    actions.appendChild(copyBtn);
+
+    var txtBtn = el('button', { class: 'btn-secondary' }, '⬇️ Fichier texte');
+    txtBtn.addEventListener('click', function () {
       var range = getRange();
       if (!range) return;
       var counts = aggregateShoppingListRange(range.start, range.end, true);
       downloadFile(baseFilename('txt', range.start), buildShoppingListText(counts, range.start, range.end), 'text/plain;charset=utf-8');
     });
-    var sheetsBtn = el('button', { class: 'btn-secondary' }, '📊 CSV (Google Sheets)');
-    sheetsBtn.addEventListener('click', function () {
+    var csvBtn = el('button', { class: 'btn-secondary' }, '⬇️ Fichier CSV');
+    csvBtn.addEventListener('click', function () {
       var range = getRange();
       if (!range) return;
       var counts = aggregateShoppingListRange(range.start, range.end, true);
       downloadFile(baseFilename('csv', range.start), buildShoppingListCsv(counts, range.start, range.end), 'text/csv;charset=utf-8');
     });
-    var keepBtn = el('button', { class: 'btn-secondary' }, '📝 Texte (Google Keep)');
-    keepBtn.addEventListener('click', function () {
-      var range = getRange();
-      if (!range) return;
-      var counts = aggregateShoppingListRange(range.start, range.end, true);
-      downloadFile(baseFilename('txt', range.start), buildShoppingListText(counts, range.start, range.end), 'text/plain;charset=utf-8');
-    });
-    actions.appendChild(docsBtn);
-    actions.appendChild(sheetsBtn);
-    actions.appendChild(keepBtn);
+    actions.appendChild(txtBtn);
+    actions.appendChild(csvBtn);
 
     openModalWith(wrap);
   }

@@ -497,6 +497,9 @@ body.light .list-day-header .day-date-inline { color: #5c6b75; }
 
 .empty-hint { color: #8fa3ab; text-align: center; padding: 30px 10px; }
 
+.card-sub a { color: #2fb37c; font-weight: 600; }
+body.light .card-sub a { color: #1f8a5c; }
+
 .shopping-item {
   display: -webkit-box;
   display: -webkit-flex;
